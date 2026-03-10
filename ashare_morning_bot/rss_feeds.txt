@@ -1,0 +1,22 @@
+﻿# High signal feeds only: Caixin + Yicai + 10jqka
+
+# Caixin (RSSHub mirror)
+https://rsshub.rssforever.com/caixin/latest
+https://rsshub.rssforever.com/caixin/weekly
+https://rsshub.rssforever.com/caixin/article
+https://rsshub.rssforever.com/caixin/finance/stock
+https://rsshub.rssforever.com/caixin/finance/regulation
+https://rsshub.rssforever.com/caixin/k
+https://rsshub.rssforever.com/caixin/database
+
+# Caixin official global RSS (English)
+https://gateway.caixin.com/api/data/global/feedlyRss
+
+# Yicai (RSSHub mirror)
+https://rsshub.rssforever.com/yicai/headline
+https://rsshub.rssforever.com/yicai/news
+https://rsshub.rssforever.com/yicai/latest
+https://rsshub.rssforever.com/yicai/feed/669
+
+# 10jqka (RSSHub mirror)
+https://rsshub.rssforever.com/10jqka/realtimenews
