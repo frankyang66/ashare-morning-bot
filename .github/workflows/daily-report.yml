@@ -2,7 +2,7 @@ name: Daily AShare Report
 
 on:
   schedule:
-    - cron: "30 0 * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
