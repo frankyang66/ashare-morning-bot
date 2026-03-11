@@ -335,11 +335,12 @@ def fallback_docx_style(items: List[NewsItem], title: str) -> Dict[str, Any]:
     }
 
 
-def llm_docx_style(items: List[NewsItem]) -> Dict[str, Any]:
+def llm_docx_style(items: List[NewsItem], allow_fallback: bool = True) -> Dict[str, Any]:
     now = datetime.now(SH_TZ)
     title = f"{now.month}月{now.day}日行情复盘与重点信息梳理"
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
+        print("LLM disabled: OPENAI_API_KEY is empty, using fallback content.")
         return fallback_docx_style(items, title)
 
     model = os.getenv("OPENAI_MODEL", "deepseek-chat")
@@ -352,7 +353,11 @@ def llm_docx_style(items: List[NewsItem]) -> Dict[str, Any]:
     market_snapshot_candidates = build_market_snapshot_candidates(items)
     source_items = build_source_candidates(items)
     if not source_items:
-        return fallback_docx_style(items, title)
+        msg = "LLM input error: no qualified source_items after filtering."
+        if allow_fallback:
+            print(msg + " Falling back to template content.")
+            return fallback_docx_style(items, title)
+        raise RuntimeError(msg)
 
     prompt = (
         "输出严格 JSON，不要额外文字。字段如下："
@@ -401,7 +406,11 @@ def llm_docx_style(items: List[NewsItem]) -> Dict[str, Any]:
         content = r.json()["choices"][0]["message"]["content"]
         data = extract_json_object(content)
         if not data:
-            return fallback_docx_style(items, title)
+            msg = "LLM parse error: response is not a valid JSON object."
+            if allow_fallback:
+                print(msg + " Falling back to template content.")
+                return fallback_docx_style(items, title)
+            raise RuntimeError(msg)
         key_points = data.get("key_points")
         if not isinstance(key_points, list):
             key_points = []
@@ -420,6 +429,12 @@ def llm_docx_style(items: List[NewsItem]) -> Dict[str, Any]:
                 }
             )
         key_points = normalized_points
+        if not clean_excerpt(str(data.get("market_review") or market_review or "")) and not key_points:
+            msg = "LLM validation error: market_review is empty and no valid key_points were generated."
+            if allow_fallback:
+                print(msg + " Falling back to template content.")
+                return fallback_docx_style(items, title)
+            raise RuntimeError(msg)
         while len(key_points) < 8:
             key_points.append(
                 {
@@ -435,8 +450,12 @@ def llm_docx_style(items: List[NewsItem]) -> Dict[str, Any]:
             "key_points": key_points,
             "strategy": data.get("strategy") or "建议围绕政策催化、产业景气和风险偏好变化保持均衡配置，优先关注确定性更高的方向。",
         }
-    except Exception:
-        return fallback_docx_style(items, title)
+    except Exception as exc:
+        msg = f"LLM request failed: {exc}"
+        if allow_fallback:
+            print(msg + " Falling back to template content.")
+            return fallback_docx_style(items, title)
+        raise RuntimeError(msg) from exc
 
 
 def render_doc_text(doc: Dict[str, Any], items: List[NewsItem]) -> str:
@@ -513,10 +532,11 @@ def main() -> None:
     secret = os.getenv("FEISHU_BOT_SECRET", "").strip() or None
     lookback = int(os.getenv("LOOKBACK_HOURS", "24"))
     max_items = int(os.getenv("MAX_NEWS_ITEMS", "30"))
+    strict_llm = os.getenv("STRICT_LLM", "1").strip().lower() not in {"0", "false", "no"}
 
     feeds = read_feeds(project_dir / "rss_feeds.txt")
     items = collect_news(feeds, lookback, max_items)
-    doc = llm_docx_style(items)
+    doc = llm_docx_style(items, allow_fallback=not strict_llm)
     text = render_doc_text(doc, items)
 
     report_path = project_dir / f"report_{datetime.now(SH_TZ).strftime('%Y-%m-%d')}.md"

@@ -30,6 +30,7 @@ copy .env.example .env
 - `FEISHU_WEBHOOK_URL` 必填
 - `OPENAI_API_KEY` 建议填写（用于解读与建议）
 - `OPENAI_BASE_URL` / `OPENAI_MODEL` 按你的供应商设置
+- `STRICT_LLM=1` 时，如果 LLM 生成失败会直接报错并停止发送，避免把降级模板误发到飞书
 
 ## 3）运行
 
@@ -77,6 +78,7 @@ python main.py
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `STRICT_LLM`
 - `LOOKBACK_HOURS`
 - `MAX_NEWS_ITEMS`
 - `RSS_FETCH_TIMEOUT`
