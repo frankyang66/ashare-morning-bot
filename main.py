@@ -816,8 +816,12 @@ def llm_docx_style(items: List[NewsItem], allow_fallback: bool = True) -> Dict[s
         print("LLM disabled: OPENAI_API_KEY is empty, using fallback content.")
         return fallback_docx_style(items, title)
 
-    model = os.getenv("OPENAI_MODEL", "deepseek-chat")
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    model = os.getenv("OPENAI_MODEL", "deepseek-chat").strip() or "deepseek-chat"
+    raw_base_url = os.getenv("OPENAI_BASE_URL", "").strip()
+    base_url = (raw_base_url or "https://api.openai.com/v1").rstrip("/")
+    if not re.match(r"^https?://", base_url, flags=re.I):
+        print(f"LLM config warning: invalid OPENAI_BASE_URL={raw_base_url!r}, fallback to default.")
+        base_url = "https://api.openai.com/v1"
     endpoint = f"{base_url}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
