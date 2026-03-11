@@ -556,10 +556,18 @@ def find_best_source_for_point(title: str, excerpt: str, source_items: List[Dict
             best = src
     if best is None:
         return None
-    # Hard threshold to enforce title-excerpt-source consistency
-    if best_score < 8:
+    # Keep consistency checks, but avoid over-strict drops that reduce key points.
+    if best_score < 6:
         return None
     return best
+
+
+def pick_next_unused_source(source_items: List[Dict[str, str]], used_links: set) -> Optional[Dict[str, str]]:
+    for src in sorted(source_items, key=lambda x: x.get("econ_score", 0), reverse=True):
+        link = str(src.get("link", ""))
+        if link and link not in used_links:
+            return src
+    return None
 
 
 def title_source_keyword_overlap(title: str, source: Dict[str, str]) -> int:
@@ -614,12 +622,69 @@ def enforce_category_quota(points: List[Dict[str, str]], source_items: List[Dict
         used_links.add(link)
 
     result: List[Dict[str, str]] = []
+    used_titles = set()
+    used_result_links = set()
     for cat in CATEGORY_ORDER:
         selected = buckets.get(cat, [])[:CATEGORY_QUOTA]
         for p in selected:
+            t = str(p.get("title", "")).strip()
+            lnk = str(p.get("link", "")).strip()
+            if t:
+                used_titles.add(t)
+            if lnk:
+                used_result_links.add(lnk)
             p.pop("category", None)
             p.pop("link", None)
             result.append(p)
+
+    # If strict 2/2/2/2 cannot be fully met, backfill with remaining valid points first.
+    if len(result) < 8:
+        for p in points:
+            if len(result) >= 8:
+                break
+            t = str(p.get("title", "")).strip()
+            lnk = str(p.get("link", "")).strip()
+            if t in used_titles or (lnk and lnk in used_result_links):
+                continue
+            p2 = {
+                "title": t,
+                "excerpt": normalize_paragraph_length(str(p.get("excerpt", "")).strip(), min_len=100, max_len=240),
+                "analysis": finalize_point(t, str(p.get("excerpt", "")).strip(), str(p.get("analysis", "")).strip()),
+            }
+            if len(p2["excerpt"]) < 80:
+                continue
+            result.append(p2)
+            if t:
+                used_titles.add(t)
+            if lnk:
+                used_result_links.add(lnk)
+
+    # Final backfill from source candidates to avoid unnecessary placeholders.
+    if len(result) < 8:
+        for src in source_items:
+            if len(result) >= 8:
+                break
+            t = clean_excerpt(str(src.get("title", "")).strip())
+            lnk = str(src.get("link", "")).strip()
+            if not t or t in used_titles or (lnk and lnk in used_result_links):
+                continue
+            ex = normalize_paragraph_length(str(src.get("excerpt", "")).strip(), min_len=100, max_len=240)
+            if len(ex) < 80:
+                continue
+            result.append(
+                {
+                    "title": t,
+                    "excerpt": ex,
+                    "analysis": finalize_point(
+                        t,
+                        ex,
+                        "该信息对相关板块的影响仍需结合后续政策与业绩验证，建议持续跟踪资金与情绪传导。",
+                    ),
+                }
+            )
+            used_titles.add(t)
+            if lnk:
+                used_result_links.add(lnk)
     return result[:8]
 
 
@@ -912,7 +977,9 @@ def llm_docx_style(items: List[NewsItem], allow_fallback: bool = True) -> Dict[s
                 continue
             matched_source = find_best_source_for_point(title_text, excerpt_text, source_items, used_source_links)
             if not matched_source:
-                continue
+                matched_source = pick_next_unused_source(source_items, used_source_links)
+                if not matched_source:
+                    continue
             used_source_links.add(str(matched_source.get("link", "")))
             enforced = enforce_point_from_source(title_text, excerpt_text, analysis_text, matched_source)
             title_text = enforced["title"]
@@ -990,10 +1057,7 @@ def render_doc_text(doc: Dict[str, Any], items: List[NewsItem]) -> str:
     if doc.get("basis_review", "").strip():
         lines.append(doc["basis_review"])
     lines.extend(["", "二. 市场要点"])
-    block_headers = {1: "国内宏观政策", 3: "国内行业", 5: "国内企业", 7: "海外宏观"}
     for idx, p in enumerate(doc["key_points"][:8], start=1):
-        if idx in block_headers:
-            lines.append(f"{block_headers[idx]}")
         raw_title = str(p.get("title", "")).strip()
         clean_title = re.sub(r"^【[^】]+】\s*", "", raw_title).strip()
         lines.append(f"{idx}. {clean_title or raw_title}")
